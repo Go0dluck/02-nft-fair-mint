@@ -1,0 +1,13 @@
+{
+    "files.autoSave": "afterDelay",
+    "[solidity]": {
+        "editor.defaultFormatter": "NomicFoundation.hardhat-solidity",
+        "editor.formatOnSave": true
+    },
+    "solidity.formatter": "forge",
+    "solidity.compileUsingRemoteVersion": "v0.8.30",
+    "solidity.packageDefaultDependenciesContractsDirectory": "src",
+    "solidity.packageDefaultDependenciesDirectory": "lib",
+    "solidity.compiler": "local",
+    "solidity.localCompilerPath": "forge"
+}
