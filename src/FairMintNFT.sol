@@ -21,6 +21,7 @@ contract FairMintNFT is ERC721, Ownable2Step {
 
     error MaxSupplyExceeded();
     error QuantityZero();
+    error MintNotPublicStage(MintStage currentStage);
     error MintStageCannotBeChanged(MintStage currentStage, MintStage newStage);
 
     constructor(address initialOwner, uint256 _maxSupply) ERC721("FAIR", "FAIR") Ownable(initialOwner) {
@@ -28,6 +29,7 @@ contract FairMintNFT is ERC721, Ownable2Step {
     }
 
     function mint(uint256 quantity) external {
+        require(mintStage == MintStage.Public, MintNotPublicStage(mintStage));
         require(quantity > 0, QuantityZero());
         require(totalSupply() + quantity <= MAX_SUPPLY, MaxSupplyExceeded());
 

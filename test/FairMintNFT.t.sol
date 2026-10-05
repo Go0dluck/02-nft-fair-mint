@@ -20,6 +20,7 @@ contract FairMintNFTTest is Test {
     }
 
     function test_CanMintExactlyMaxSupply() public {
+        _openPublic();
         vm.prank(alice);
         fairMintNFT.mint(10);
         assertEq(fairMintNFT.balanceOf(alice), 10);
@@ -29,6 +30,7 @@ contract FairMintNFTTest is Test {
     }
 
     function test_RevertWhen_ExceedsMaxSupply() public {
+        _openPublic();
         vm.startPrank(alice);
         fairMintNFT.mint(8);
         assertEq(fairMintNFT.balanceOf(alice), 8);
@@ -41,12 +43,14 @@ contract FairMintNFTTest is Test {
     }
 
     function test_RevertWhen_ZeroQuantity() public {
+        _openPublic();
         vm.expectRevert(FairMintNFT.QuantityZero.selector);
         vm.prank(alice);
         fairMintNFT.mint(0);
     }
 
     function test_RevertWhen_MintAfterSoldOut() public {
+        _openPublic();
         vm.startPrank(alice);
         fairMintNFT.mint(10);
         vm.expectRevert(FairMintNFT.MaxSupplyExceeded.selector);
@@ -55,6 +59,7 @@ contract FairMintNFTTest is Test {
     }
 
     function test_CanMint_TwoUsers() public {
+        _openPublic();
         vm.prank(alice);
         fairMintNFT.mint(3);
         assertEq(fairMintNFT.ownerOf(3), alice);
@@ -128,14 +133,10 @@ contract FairMintNFTTest is Test {
     }
 
     function test_CanEndFromPublicStage() public {
-        vm.startPrank(dev);
-        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
-        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Allowlist));
-        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Public);
-        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Public));
+        _openPublic();
+        vm.prank(dev);
         fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
         assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Ended));
-        vm.stopPrank();
     }
 
     function test_RevertWhen_AlreadyEnded() public {
@@ -150,7 +151,49 @@ contract FairMintNFTTest is Test {
         vm.stopPrank();
     }
 
-    function _openPublic() private {
+    function test_RevertWhen_MintInNotStarted() public {
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(FairMintNFT.MintNotPublicStage.selector, FairMintNFT.MintStage.NotStarted)
+        );
+        fairMintNFT.mint(1);
+    }
+
+    function test_RevertWhen_MintInAllowlist() public {
+        vm.prank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(FairMintNFT.MintNotPublicStage.selector, FairMintNFT.MintStage.Allowlist)
+        );
+        fairMintNFT.mint(1);
+    }
+
+    function test_RevertWhen_MintInEnded() public {
+        _openPublic();
+        vm.prank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(FairMintNFT.MintNotPublicStage.selector, FairMintNFT.MintStage.Ended));
+        fairMintNFT.mint(1);
+    }
+
+    function test_MintPublic_RevertWhen_MintInEnded() public {
+        _openPublic();
+        vm.prank(alice);
+        fairMintNFT.mint(3);
+        assertEq(fairMintNFT.balanceOf(alice), 3);
+        assertEq(fairMintNFT.totalSupply(), 3);
+        vm.prank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(FairMintNFT.MintNotPublicStage.selector, FairMintNFT.MintStage.Ended));
+        fairMintNFT.mint(4);
+        assertEq(fairMintNFT.balanceOf(alice), 3);
+        assertEq(fairMintNFT.totalSupply(), 3);
+    }
+
+    function _openPublic() internal {
         vm.startPrank(dev);
         fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
         fairMintNFT.changeMintStage(FairMintNFT.MintStage.Public);
