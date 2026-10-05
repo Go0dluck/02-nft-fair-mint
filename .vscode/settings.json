@@ -1,7 +1,7 @@
 {
-    "files.autoSave": "afterDelay",
+    "files.autoSave": "onFocusChange",
     "[solidity]": {
-        "editor.defaultFormatter": "NomicFoundation.hardhat-solidity",
+        "editor.defaultFormatter": "JuanBlanco.solidity",
         "editor.formatOnSave": true
     },
     "solidity.formatter": "forge",

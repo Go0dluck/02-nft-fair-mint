@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {FairMintNFT} from "../src/FairMintNFT.sol";
 
 contract FairMintNFTTest is Test {
@@ -62,5 +63,97 @@ contract FairMintNFTTest is Test {
         assertEq(fairMintNFT.ownerOf(4), bob);
         assertEq(fairMintNFT.balanceOf(bob), 2);
         assertEq(fairMintNFT.totalSupply(), 5);
+    }
+
+    function test_ChangeMintStage_EmitsEvent() public {
+        vm.startPrank(dev);
+        vm.expectEmit(false, false, false, true);
+        emit FairMintNFT.MintStageChanged(uint8(FairMintNFT.MintStage.Allowlist));
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
+        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Allowlist));
+        vm.stopPrank();
+    }
+
+    function test_FullStageLifecycle() public {
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
+        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Allowlist));
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Public);
+        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Public));
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Ended));
+        vm.stopPrank();
+    }
+
+    function test_RevertWhen_NotOwnerChangesStage() public {
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
+    }
+
+    function test_RevertWhen_StageGoesBack() public {
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Public);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                FairMintNFT.MintStageCannotBeChanged.selector,
+                FairMintNFT.MintStage.Public,
+                FairMintNFT.MintStage.Allowlist
+            )
+        );
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
+        vm.stopPrank();
+    }
+
+    function test_RevertWhen_StageSkipped() public {
+        vm.prank(dev);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                FairMintNFT.MintStageCannotBeChanged.selector,
+                FairMintNFT.MintStage.NotStarted,
+                FairMintNFT.MintStage.Public
+            )
+        );
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Public);
+    }
+
+    function test_CanEndFromAllowlistStage() public {
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
+        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Allowlist));
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Ended));
+        vm.stopPrank();
+    }
+
+    function test_CanEndFromPublicStage() public {
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
+        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Allowlist));
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Public);
+        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Public));
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        assertEq(uint8(fairMintNFT.mintStage()), uint8(FairMintNFT.MintStage.Ended));
+        vm.stopPrank();
+    }
+
+    function test_RevertWhen_AlreadyEnded() public {
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                FairMintNFT.MintStageCannotBeChanged.selector, FairMintNFT.MintStage.Ended, FairMintNFT.MintStage.Ended
+            )
+        );
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        vm.stopPrank();
+    }
+
+    function _openPublic() private {
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Public);
+        vm.stopPrank();
     }
 }
