@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {FairMintNFT} from "../src/FairMintNFT.sol";
+import {RejectingReceiver} from "./mocks/RejectingReceiver.sol";
 
 contract FairMintNFTTest is Test {
     FairMintNFT fairMintNFT;
@@ -278,6 +279,53 @@ contract FairMintNFTTest is Test {
         );
         fairMintNFT.mint{value: PRICE * 1}(1);
         vm.stopPrank();
+    }
+
+    function test_WithdrawRevertRecipientNotAccept() public {
+        address user1 = makeAddr("user1");
+        vm.deal(user1, PRICE * 3);
+        RejectingReceiver mock = new RejectingReceiver();
+        FairMintNFT fair = new FairMintNFT(address(mock), 10, PRICE, 3, MAX_PER_WALLET);
+        vm.startPrank(address(mock));
+        fair.changeMintStage(FairMintNFT.MintStage.Allowlist);
+        fair.changeMintStage(FairMintNFT.MintStage.Public);
+        vm.stopPrank();
+        vm.prank(user1);
+        fair.mint{value: PRICE * 3}(3);
+        vm.prank(address(mock));
+        vm.expectRevert(FairMintNFT.RecipientNotAccept.selector);
+        fair.withdraw();
+        assertEq(address(fair).balance, PRICE * 3);
+    }
+
+    function test_WithdrawNotOwner() public {
+        _openPublic();
+        vm.startPrank(alice);
+        fairMintNFT.mint{value: PRICE * 2}(2);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        fairMintNFT.withdraw();
+        vm.stopPrank();
+    }
+
+    function test_WithdrawBalanceContractZero() public {
+        vm.prank(dev);
+        vm.expectRevert(FairMintNFT.BalanceContractZero.selector);
+        fairMintNFT.withdraw();
+    }
+
+    function test_WithdrawSuccess() public {
+        _openPublic();
+        vm.prank(alice);
+        fairMintNFT.mint{value: PRICE * 2}(2);
+        assertEq(address(fairMintNFT).balance, PRICE * 2);
+
+        vm.expectEmit(true, false, false, true);
+        emit FairMintNFT.Withdrawn(dev, PRICE * 2);
+        vm.prank(dev);
+        fairMintNFT.withdraw();
+
+        assertEq(address(fairMintNFT).balance, 0);
+        assertEq(dev.balance, PRICE * 2);
     }
 
     function _openPublic() internal {

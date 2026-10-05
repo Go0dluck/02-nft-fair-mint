@@ -23,9 +23,12 @@ contract FairMintNFT is ERC721, Ownable2Step {
     mapping(address => uint256) public publicMinted;
 
     event MintStageChanged(uint8 newStage);
+    event Withdrawn(address indexed to, uint256 amount);
 
     error MaxSupplyExceeded();
     error QuantityZero();
+    error RecipientNotAccept();
+    error BalanceContractZero();
     error MintNotPublicStage(MintStage currentStage);
     error MintStageCannotBeChanged(MintStage currentStage, MintStage newStage);
     error ValueNotEqualTotalMintPrice(uint256 currentValue, uint256 totalMintPrice);
@@ -80,5 +83,14 @@ contract FairMintNFT is ERC721, Ownable2Step {
 
         mintStage = newStage;
         emit MintStageChanged(uint8(newStage));
+    }
+
+    function withdraw() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, BalanceContractZero());
+
+        (bool success,) = owner().call{value: balance}("");
+        require(success, RecipientNotAccept());
+        emit Withdrawn(owner(), balance);
     }
 }
