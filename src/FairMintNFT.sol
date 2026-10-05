@@ -15,8 +15,12 @@ contract FairMintNFT is ERC721, Ownable2Step {
 
     uint256 public immutable MAX_SUPPLY;
     uint256 public immutable MINT_PRICE;
+    uint256 public immutable MAX_PER_WALLET_ALLOWLIST;
+    uint256 public immutable MAX_PER_WALLET_PUBLIC;
     uint256 private nextTokenId = 1;
     MintStage public mintStage;
+    mapping(address => uint256) public allowlistMinted;
+    mapping(address => uint256) public publicMinted;
 
     event MintStageChanged(uint8 newStage);
 
@@ -25,13 +29,20 @@ contract FairMintNFT is ERC721, Ownable2Step {
     error MintNotPublicStage(MintStage currentStage);
     error MintStageCannotBeChanged(MintStage currentStage, MintStage newStage);
     error ValueNotEqualTotalMintPrice(uint256 currentValue, uint256 totalMintPrice);
+    error MaxPerWalletAllowlistLimitExceeded(uint256 quantity, uint256 currentQuantity, uint256 maxPerWalletAllowlist);
+    error MaxPerWalletPublicLimitExceeded(uint256 quantity, uint256 currentQuantity, uint256 maxPerWalletPublic);
 
-    constructor(address initialOwner, uint256 _maxSupply, uint256 _mintPrice)
-        ERC721("FAIR", "FAIR")
-        Ownable(initialOwner)
-    {
+    constructor(
+        address initialOwner,
+        uint256 _maxSupply,
+        uint256 _mintPrice,
+        uint256 _maxPerWalletAllowlist,
+        uint256 _maxPerWalletPublic
+    ) ERC721("FAIR", "FAIR") Ownable(initialOwner) {
         MAX_SUPPLY = _maxSupply;
         MINT_PRICE = _mintPrice;
+        MAX_PER_WALLET_ALLOWLIST = _maxPerWalletAllowlist;
+        MAX_PER_WALLET_PUBLIC = _maxPerWalletPublic;
     }
 
     function mint(uint256 quantity) external payable {
@@ -41,6 +52,13 @@ contract FairMintNFT is ERC721, Ownable2Step {
 
         uint256 totalMintPrice = quantity * MINT_PRICE;
         require(msg.value == totalMintPrice, ValueNotEqualTotalMintPrice(msg.value, totalMintPrice));
+
+        uint256 currentQuantity = publicMinted[msg.sender];
+        require(
+            currentQuantity + quantity <= MAX_PER_WALLET_PUBLIC,
+            MaxPerWalletPublicLimitExceeded(quantity, currentQuantity, MAX_PER_WALLET_PUBLIC)
+        );
+        publicMinted[msg.sender] = currentQuantity + quantity;
 
         uint256 tempTokenId = nextTokenId;
         nextTokenId += quantity;

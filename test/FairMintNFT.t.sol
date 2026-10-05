@@ -11,6 +11,7 @@ contract FairMintNFTTest is Test {
     address alice;
     address bob;
     uint256 constant PRICE = 0.01 ether;
+    uint256 constant MAX_PER_WALLET = 3;
 
     function setUp() external {
         dev = makeAddr("dev");
@@ -18,30 +19,35 @@ contract FairMintNFTTest is Test {
         bob = makeAddr("bob");
         vm.deal(alice, 10 ether);
         vm.deal(bob, 10 ether);
-        fairMintNFT = new FairMintNFT(dev, 10, PRICE);
+        fairMintNFT = new FairMintNFT(dev, 10, PRICE, 3, MAX_PER_WALLET);
     }
 
     function test_CanMintExactlyMaxSupply() public {
         _openPublic();
-        vm.prank(alice);
-        fairMintNFT.mint{value: PRICE * 10}(10);
-        assertEq(fairMintNFT.balanceOf(alice), 10);
+        address user1 = makeAddr("user1");
+        address user2 = makeAddr("user2");
+        address user3 = makeAddr("user3");
+        address user4 = makeAddr("user4");
+        _mintAs(user1, 3);
+        _mintAs(user2, 3);
+        _mintAs(user3, 3);
+        _mintAs(user4, 1);
         assertEq(fairMintNFT.totalSupply(), 10);
-        assertEq(fairMintNFT.ownerOf(1), alice);
-        assertEq(fairMintNFT.ownerOf(10), alice);
+        assertEq(fairMintNFT.ownerOf(10), user4);
     }
 
     function test_RevertWhen_ExceedsMaxSupply() public {
         _openPublic();
-        vm.startPrank(alice);
-        fairMintNFT.mint{value: PRICE * 8}(8);
-        assertEq(fairMintNFT.balanceOf(alice), 8);
-        assertEq(fairMintNFT.totalSupply(), 8);
+        address user1 = makeAddr("user1");
+        address user2 = makeAddr("user2");
+        address user3 = makeAddr("user3");
+        address user4 = makeAddr("user4");
+        _mintAs(user1, 3);
+        _mintAs(user2, 3);
+        _mintAs(user3, 3);
         vm.expectRevert(FairMintNFT.MaxSupplyExceeded.selector);
-        fairMintNFT.mint{value: PRICE * 5}(5);
-        assertEq(fairMintNFT.balanceOf(alice), 8);
-        assertEq(fairMintNFT.totalSupply(), 8);
-        vm.stopPrank();
+        _mintAs(user4, 3);
+        assertEq(fairMintNFT.totalSupply(), 9);
     }
 
     function test_RevertWhen_ZeroQuantity() public {
@@ -53,11 +59,17 @@ contract FairMintNFTTest is Test {
 
     function test_RevertWhen_MintAfterSoldOut() public {
         _openPublic();
-        vm.startPrank(alice);
-        fairMintNFT.mint{value: PRICE * 10}(10);
+        address user1 = makeAddr("user1");
+        address user2 = makeAddr("user2");
+        address user3 = makeAddr("user3");
+        address user4 = makeAddr("user4");
+        address user5 = makeAddr("user5");
+        _mintAs(user1, 3);
+        _mintAs(user2, 3);
+        _mintAs(user3, 3);
+        _mintAs(user4, 1);
         vm.expectRevert(FairMintNFT.MaxSupplyExceeded.selector);
-        fairMintNFT.mint{value: PRICE * 1}(1);
-        vm.stopPrank();
+        _mintAs(user5, 1);
     }
 
     function test_CanMint_TwoUsers() public {
@@ -217,10 +229,67 @@ contract FairMintNFTTest is Test {
         assertEq(alice.balance, 10 ether - PRICE * 2);
     }
 
+    function test_RevertWhen_ExceedsWalletLimitInOneTx() public {
+        _openPublic();
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(FairMintNFT.MaxPerWalletPublicLimitExceeded.selector, 4, 0, MAX_PER_WALLET)
+        );
+        fairMintNFT.mint{value: PRICE * 4}(4);
+    }
+
+    function test_RevertWhen_ExceedsWalletLimitAcrossTxs() public {
+        _openPublic();
+        vm.startPrank(alice);
+        fairMintNFT.mint{value: PRICE * 2}(2);
+        vm.expectRevert(
+            abi.encodeWithSelector(FairMintNFT.MaxPerWalletPublicLimitExceeded.selector, 2, 2, MAX_PER_WALLET)
+        );
+        fairMintNFT.mint{value: PRICE * 2}(2);
+        vm.stopPrank();
+    }
+
+    function test_CanMintUpToWalletLimit() public {
+        _openPublic();
+        vm.prank(alice);
+        fairMintNFT.mint{value: PRICE * 3}(3);
+        assertEq(fairMintNFT.publicMinted(alice), 3);
+    }
+
+    function test_WalletLimitIsPerAddress() public {
+        _openPublic();
+        vm.prank(alice);
+        fairMintNFT.mint{value: PRICE * 3}(3);
+        vm.prank(bob);
+        fairMintNFT.mint{value: PRICE * 3}(3);
+        assertEq(fairMintNFT.publicMinted(alice), 3);
+        assertEq(fairMintNFT.publicMinted(bob), 3);
+    }
+
+    function test_RevertWhen_MintAgainAfterTransfer() public {
+        _openPublic();
+        vm.startPrank(alice);
+        fairMintNFT.mint{value: PRICE * 3}(3);
+        assertEq(fairMintNFT.publicMinted(alice), 3);
+        fairMintNFT.transferFrom(alice, bob, 1);
+        assertEq(fairMintNFT.balanceOf(alice), 2);
+        vm.expectRevert(
+            abi.encodeWithSelector(FairMintNFT.MaxPerWalletPublicLimitExceeded.selector, 1, 3, MAX_PER_WALLET)
+        );
+        fairMintNFT.mint{value: PRICE * 1}(1);
+        vm.stopPrank();
+    }
+
     function _openPublic() internal {
         vm.startPrank(dev);
         fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
         fairMintNFT.changeMintStage(FairMintNFT.MintStage.Public);
         vm.stopPrank();
+    }
+
+    function _mintAs(address user, uint256 quantity) internal {
+        vm.deal(user, PRICE * quantity);
+        vm.prank(user);
+        fairMintNFT.mint{value: PRICE * quantity}(quantity);
     }
 }
