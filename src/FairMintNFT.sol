@@ -61,13 +61,13 @@ contract FairMintNFT is ERC721, Ownable2Step {
             currentQuantity + quantity <= MAX_PER_WALLET_PUBLIC,
             MaxPerWalletPublicLimitExceeded(quantity, currentQuantity, MAX_PER_WALLET_PUBLIC)
         );
-        publicMinted[msg.sender] = currentQuantity + quantity;
 
         uint256 tempTokenId = nextTokenId;
         nextTokenId += quantity;
+        publicMinted[msg.sender] = currentQuantity + quantity;
 
         for (uint256 index = 0; index < quantity; index++) {
-            _mint(msg.sender, tempTokenId++);
+            _safeMint(msg.sender, tempTokenId++);
         }
     }
 

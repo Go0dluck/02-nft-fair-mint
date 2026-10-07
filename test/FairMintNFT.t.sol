@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {FairMintNFT} from "../src/FairMintNFT.sol";
 import {RejectingReceiver} from "./mocks/RejectingReceiver.sol";
+import {MaliciousReceiver} from "./mocks/MaliciousReceiver.sol";
 
 contract FairMintNFTTest is Test {
     FairMintNFT fairMintNFT;
@@ -326,6 +327,19 @@ contract FairMintNFTTest is Test {
 
         assertEq(address(fairMintNFT).balance, 0);
         assertEq(dev.balance, PRICE * 2);
+    }
+
+    function test_RevertWhen_ReentrantMintExceedsWalletLimit() public {
+        _openPublic();
+        MaliciousReceiver maliciousReceiver = new MaliciousReceiver(fairMintNFT);
+        vm.deal(address(maliciousReceiver), 1 ether);
+        vm.expectRevert(
+            abi.encodeWithSelector(FairMintNFT.MaxPerWalletPublicLimitExceeded.selector, 3, 3, MAX_PER_WALLET)
+        );
+        maliciousReceiver.attack(MAX_PER_WALLET);
+        assertEq(fairMintNFT.balanceOf(address(maliciousReceiver)), 0);
+        assertEq(fairMintNFT.totalSupply(), 0);
+        assertEq(fairMintNFT.publicMinted(address(maliciousReceiver)), 0);
     }
 
     function _openPublic() internal {
