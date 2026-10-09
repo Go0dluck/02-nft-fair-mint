@@ -246,9 +246,7 @@ contract FairMintNFTTest is Test {
     function test_RevertWhen_ExceedsWalletLimitInOneTx() public {
         _openPublic();
         vm.prank(alice);
-        vm.expectRevert(
-            abi.encodeWithSelector(FairMintNFT.MaxPerWalletPublicLimitExceeded.selector, 4, 0, MAX_PER_WALLET_PUBLIC)
-        );
+        vm.expectRevert(abi.encodeWithSelector(FairMintNFT.WalletLimitExceeded.selector, 4, 0, MAX_PER_WALLET_PUBLIC));
         fairMintNFT.mint{value: PRICE_PUBLIC * 4}(4);
     }
 
@@ -256,9 +254,7 @@ contract FairMintNFTTest is Test {
         _openPublic();
         vm.startPrank(alice);
         fairMintNFT.mint{value: PRICE_PUBLIC * 2}(2);
-        vm.expectRevert(
-            abi.encodeWithSelector(FairMintNFT.MaxPerWalletPublicLimitExceeded.selector, 2, 2, MAX_PER_WALLET_PUBLIC)
-        );
+        vm.expectRevert(abi.encodeWithSelector(FairMintNFT.WalletLimitExceeded.selector, 2, 2, MAX_PER_WALLET_PUBLIC));
         fairMintNFT.mint{value: PRICE_PUBLIC * 2}(2);
         vm.stopPrank();
     }
@@ -287,9 +283,7 @@ contract FairMintNFTTest is Test {
         assertEq(fairMintNFT.publicMinted(alice), 3);
         fairMintNFT.transferFrom(alice, bob, 1);
         assertEq(fairMintNFT.balanceOf(alice), 2);
-        vm.expectRevert(
-            abi.encodeWithSelector(FairMintNFT.MaxPerWalletPublicLimitExceeded.selector, 1, 3, MAX_PER_WALLET_PUBLIC)
-        );
+        vm.expectRevert(abi.encodeWithSelector(FairMintNFT.WalletLimitExceeded.selector, 1, 3, MAX_PER_WALLET_PUBLIC));
         fairMintNFT.mint{value: PRICE_PUBLIC * 1}(1);
         vm.stopPrank();
     }
@@ -345,9 +339,7 @@ contract FairMintNFTTest is Test {
         _openPublic();
         MaliciousReceiver maliciousReceiver = new MaliciousReceiver(fairMintNFT);
         vm.deal(address(maliciousReceiver), 1 ether);
-        vm.expectRevert(
-            abi.encodeWithSelector(FairMintNFT.MaxPerWalletPublicLimitExceeded.selector, 3, 3, MAX_PER_WALLET_PUBLIC)
-        );
+        vm.expectRevert(abi.encodeWithSelector(FairMintNFT.WalletLimitExceeded.selector, 3, 3, MAX_PER_WALLET_PUBLIC));
         maliciousReceiver.attack(MAX_PER_WALLET_PUBLIC);
         assertEq(fairMintNFT.balanceOf(address(maliciousReceiver)), 0);
         assertEq(fairMintNFT.totalSupply(), 0);
@@ -432,9 +424,7 @@ contract FairMintNFTTest is Test {
         vm.stopPrank();
         vm.prank(alice);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                FairMintNFT.MaxPerWalletAllowlistLimitExceeded.selector, 3, 0, MAX_PER_WALLET_ALLOWLIST
-            )
+            abi.encodeWithSelector(FairMintNFT.WalletLimitExceeded.selector, 3, 0, MAX_PER_WALLET_ALLOWLIST)
         );
         fairMintNFT.allowlistMint{value: PRICE_ALLOWLIST * 3}(3, _proofOf(alice));
     }
@@ -446,9 +436,7 @@ contract FairMintNFTTest is Test {
         vm.startPrank(alice);
         fairMintNFT.allowlistMint{value: PRICE_ALLOWLIST * 1}(1, _proofOf(alice));
         vm.expectRevert(
-            abi.encodeWithSelector(
-                FairMintNFT.MaxPerWalletAllowlistLimitExceeded.selector, 2, 1, MAX_PER_WALLET_ALLOWLIST
-            )
+            abi.encodeWithSelector(FairMintNFT.WalletLimitExceeded.selector, 2, 1, MAX_PER_WALLET_ALLOWLIST)
         );
         fairMintNFT.allowlistMint{value: PRICE_ALLOWLIST * 2}(2, _proofOf(alice));
         vm.stopPrank();
@@ -487,10 +475,10 @@ contract FairMintNFTTest is Test {
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
-                FairMintNFT.ValueNotEqualTotalMintPrice.selector, PRICE_ALLOWLIST * 2, PRICE_ALLOWLIST * 3
+                FairMintNFT.ValueNotEqualTotalMintPrice.selector, PRICE_PUBLIC * 2, PRICE_ALLOWLIST * 2
             )
         );
-        fairMintNFT.allowlistMint{value: PRICE_ALLOWLIST * 2}(3, _proofOf(alice));
+        fairMintNFT.allowlistMint{value: PRICE_PUBLIC * 2}(2, _proofOf(alice));
     }
 
     function test_AllowlistAndPublicLimitsAreSeparate() public {

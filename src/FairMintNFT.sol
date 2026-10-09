@@ -38,8 +38,7 @@ contract FairMintNFT is ERC721, Ownable2Step {
     error MintNotAllowlistStage(MintStage currentStage);
     error MintStageCannotBeChanged(MintStage currentStage, MintStage newStage);
     error ValueNotEqualTotalMintPrice(uint256 currentValue, uint256 totalMintPrice);
-    error MaxPerWalletAllowlistLimitExceeded(uint256 quantity, uint256 currentQuantity, uint256 maxPerWalletAllowlist);
-    error MaxPerWalletPublicLimitExceeded(uint256 quantity, uint256 currentQuantity, uint256 maxPerWalletPublic);
+    error WalletLimitExceeded(uint256 quantity, uint256 currentQuantity, uint256 maxPerWallet);
     error NotInAllowlist(address account);
     error MerkleRootLocked(MintStage currentStage);
     error MerkleRootNotSet();
@@ -61,48 +60,37 @@ contract FairMintNFT is ERC721, Ownable2Step {
 
     function mint(uint256 quantity) external payable {
         require(mintStage == MintStage.Public, MintNotPublicStage(mintStage));
-        require(quantity > 0, QuantityZero());
-        require(totalSupply() + quantity <= MAX_SUPPLY, MaxSupplyExceeded());
 
-        uint256 totalMintPrice = quantity * MINT_PRICE_PUBLIC;
-        require(msg.value == totalMintPrice, ValueNotEqualTotalMintPrice(msg.value, totalMintPrice));
-
-        uint256 currentQuantity = publicMinted[msg.sender];
-        require(
-            currentQuantity + quantity <= MAX_PER_WALLET_PUBLIC,
-            MaxPerWalletPublicLimitExceeded(quantity, currentQuantity, MAX_PER_WALLET_PUBLIC)
-        );
-
-        uint256 tempTokenId = nextTokenId;
-        nextTokenId += quantity;
-        publicMinted[msg.sender] = currentQuantity + quantity;
-
-        for (uint256 index = 0; index < quantity; index++) {
-            _safeMint(msg.sender, tempTokenId++);
-        }
+        _processMint(publicMinted, MINT_PRICE_PUBLIC, quantity, MAX_PER_WALLET_PUBLIC);
     }
 
     function allowlistMint(uint256 quantity, bytes32[] calldata proof) external payable {
         require(mintStage == MintStage.Allowlist, MintNotAllowlistStage(mintStage));
-        require(quantity > 0, QuantityZero());
-        require(totalSupply() + quantity <= MAX_SUPPLY, MaxSupplyExceeded());
         require(
             MerkleProof.verify(proof, merkleRoot, keccak256(bytes.concat(keccak256(abi.encode(msg.sender))))),
             NotInAllowlist(msg.sender)
         );
 
-        uint256 totalMintPrice = quantity * MINT_PRICE_ALLOWLIST;
+        _processMint(allowlistMinted, MINT_PRICE_ALLOWLIST, quantity, MAX_PER_WALLET_ALLOWLIST);
+    }
+
+    function _processMint(
+        mapping(address => uint256) storage counter,
+        uint256 mintPrice,
+        uint256 quantity,
+        uint256 maxPerWallet
+    ) private {
+        require(quantity > 0, QuantityZero());
+        require(totalSupply() + quantity <= MAX_SUPPLY, MaxSupplyExceeded());
+        uint256 totalMintPrice = quantity * mintPrice;
         require(msg.value == totalMintPrice, ValueNotEqualTotalMintPrice(msg.value, totalMintPrice));
-
-        uint256 currentQuantity = allowlistMinted[msg.sender];
+        uint256 currentQuantity = counter[msg.sender];
         require(
-            currentQuantity + quantity <= MAX_PER_WALLET_ALLOWLIST,
-            MaxPerWalletAllowlistLimitExceeded(quantity, currentQuantity, MAX_PER_WALLET_ALLOWLIST)
+            counter[msg.sender] + quantity <= maxPerWallet, WalletLimitExceeded(quantity, currentQuantity, maxPerWallet)
         );
-
         uint256 tempTokenId = nextTokenId;
         nextTokenId += quantity;
-        allowlistMinted[msg.sender] = currentQuantity + quantity;
+        counter[msg.sender] = currentQuantity + quantity;
 
         for (uint256 index = 0; index < quantity; index++) {
             _safeMint(msg.sender, tempTokenId++);
