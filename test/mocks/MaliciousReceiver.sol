@@ -28,6 +28,6 @@ contract MaliciousReceiver is IERC721Receiver {
     }
 
     function _mint() private {
-        fairMintNFT.mint{value: fairMintNFT.MINT_PRICE() * quantityPerMint}(quantityPerMint);
+        fairMintNFT.mint{value: fairMintNFT.MINT_PRICE_PUBLIC() * quantityPerMint}(quantityPerMint);
     }
 }

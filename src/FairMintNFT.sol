@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -14,36 +15,46 @@ contract FairMintNFT is ERC721, Ownable2Step {
     }
 
     uint256 public immutable MAX_SUPPLY;
-    uint256 public immutable MINT_PRICE;
+    uint256 public immutable MINT_PRICE_PUBLIC;
+    uint256 public immutable MINT_PRICE_ALLOWLIST;
     uint256 public immutable MAX_PER_WALLET_ALLOWLIST;
     uint256 public immutable MAX_PER_WALLET_PUBLIC;
     uint256 private nextTokenId = 1;
+    bytes32 public merkleRoot;
+
     MintStage public mintStage;
     mapping(address => uint256) public allowlistMinted;
     mapping(address => uint256) public publicMinted;
 
     event MintStageChanged(uint8 newStage);
     event Withdrawn(address indexed to, uint256 amount);
+    event MerkleRootUpdated(bytes32 newRoot);
 
     error MaxSupplyExceeded();
     error QuantityZero();
     error RecipientNotAccept();
     error BalanceContractZero();
     error MintNotPublicStage(MintStage currentStage);
+    error MintNotAllowlistStage(MintStage currentStage);
     error MintStageCannotBeChanged(MintStage currentStage, MintStage newStage);
     error ValueNotEqualTotalMintPrice(uint256 currentValue, uint256 totalMintPrice);
     error MaxPerWalletAllowlistLimitExceeded(uint256 quantity, uint256 currentQuantity, uint256 maxPerWalletAllowlist);
     error MaxPerWalletPublicLimitExceeded(uint256 quantity, uint256 currentQuantity, uint256 maxPerWalletPublic);
+    error NotInAllowlist(address account);
+    error MerkleRootLocked(MintStage currentStage);
+    error MerkleRootNotSet();
 
     constructor(
         address initialOwner,
         uint256 _maxSupply,
-        uint256 _mintPrice,
+        uint256 _mintPricePublic,
+        uint256 _mintPriceAllowlist,
         uint256 _maxPerWalletAllowlist,
         uint256 _maxPerWalletPublic
     ) ERC721("FAIR", "FAIR") Ownable(initialOwner) {
         MAX_SUPPLY = _maxSupply;
-        MINT_PRICE = _mintPrice;
+        MINT_PRICE_PUBLIC = _mintPricePublic;
+        MINT_PRICE_ALLOWLIST = _mintPriceAllowlist;
         MAX_PER_WALLET_ALLOWLIST = _maxPerWalletAllowlist;
         MAX_PER_WALLET_PUBLIC = _maxPerWalletPublic;
     }
@@ -53,7 +64,7 @@ contract FairMintNFT is ERC721, Ownable2Step {
         require(quantity > 0, QuantityZero());
         require(totalSupply() + quantity <= MAX_SUPPLY, MaxSupplyExceeded());
 
-        uint256 totalMintPrice = quantity * MINT_PRICE;
+        uint256 totalMintPrice = quantity * MINT_PRICE_PUBLIC;
         require(msg.value == totalMintPrice, ValueNotEqualTotalMintPrice(msg.value, totalMintPrice));
 
         uint256 currentQuantity = publicMinted[msg.sender];
@@ -71,6 +82,39 @@ contract FairMintNFT is ERC721, Ownable2Step {
         }
     }
 
+    function allowlistMint(uint256 quantity, bytes32[] calldata proof) external payable {
+        require(mintStage == MintStage.Allowlist, MintNotAllowlistStage(mintStage));
+        require(quantity > 0, QuantityZero());
+        require(totalSupply() + quantity <= MAX_SUPPLY, MaxSupplyExceeded());
+        require(
+            MerkleProof.verify(proof, merkleRoot, keccak256(bytes.concat(keccak256(abi.encode(msg.sender))))),
+            NotInAllowlist(msg.sender)
+        );
+
+        uint256 totalMintPrice = quantity * MINT_PRICE_ALLOWLIST;
+        require(msg.value == totalMintPrice, ValueNotEqualTotalMintPrice(msg.value, totalMintPrice));
+
+        uint256 currentQuantity = allowlistMinted[msg.sender];
+        require(
+            currentQuantity + quantity <= MAX_PER_WALLET_ALLOWLIST,
+            MaxPerWalletAllowlistLimitExceeded(quantity, currentQuantity, MAX_PER_WALLET_ALLOWLIST)
+        );
+
+        uint256 tempTokenId = nextTokenId;
+        nextTokenId += quantity;
+        allowlistMinted[msg.sender] = currentQuantity + quantity;
+
+        for (uint256 index = 0; index < quantity; index++) {
+            _safeMint(msg.sender, tempTokenId++);
+        }
+    }
+
+    function setMerkleRoot(bytes32 newRoot) external onlyOwner {
+        require(mintStage == MintStage.NotStarted, MerkleRootLocked(mintStage));
+        merkleRoot = newRoot;
+        emit MerkleRootUpdated(newRoot);
+    }
+
     function totalSupply() public view returns (uint256) {
         return nextTokenId - 1;
     }
@@ -80,6 +124,7 @@ contract FairMintNFT is ERC721, Ownable2Step {
             (mintStage != MintStage.Ended && newStage == MintStage.Ended) || uint8(mintStage) + 1 == uint8(newStage),
             MintStageCannotBeChanged(mintStage, newStage)
         );
+        require(newStage != MintStage.Allowlist || merkleRoot != 0, MerkleRootNotSet());
 
         mintStage = newStage;
         emit MintStageChanged(uint8(newStage));
