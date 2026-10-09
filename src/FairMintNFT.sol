@@ -5,8 +5,11 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 contract FairMintNFT is ERC721, Ownable2Step {
+    using Strings for uint256;
+
     enum MintStage {
         NotStarted,
         Allowlist,
@@ -21,6 +24,10 @@ contract FairMintNFT is ERC721, Ownable2Step {
     uint256 public immutable MAX_PER_WALLET_PUBLIC;
     uint256 private nextTokenId = 1;
     bytes32 public merkleRoot;
+    string public unrevealedURI;
+    string public baseURI;
+    bool public revealed;
+    bytes32 public immutable PROVENANCE_HASH;
 
     MintStage public mintStage;
     mapping(address => uint256) public allowlistMinted;
@@ -29,6 +36,7 @@ contract FairMintNFT is ERC721, Ownable2Step {
     event MintStageChanged(uint8 newStage);
     event Withdrawn(address indexed to, uint256 amount);
     event MerkleRootUpdated(bytes32 newRoot);
+    event Revealed(string baseURI);
 
     error MaxSupplyExceeded();
     error QuantityZero();
@@ -42,6 +50,8 @@ contract FairMintNFT is ERC721, Ownable2Step {
     error NotInAllowlist(address account);
     error MerkleRootLocked(MintStage currentStage);
     error MerkleRootNotSet();
+    error RevealNotEndedStage(MintStage currentStage);
+    error AlreadyRevealed();
 
     constructor(
         address initialOwner,
@@ -49,13 +59,17 @@ contract FairMintNFT is ERC721, Ownable2Step {
         uint256 _mintPricePublic,
         uint256 _mintPriceAllowlist,
         uint256 _maxPerWalletAllowlist,
-        uint256 _maxPerWalletPublic
+        uint256 _maxPerWalletPublic,
+        string memory _unrevealedURI,
+        bytes32 _provenanceHash
     ) ERC721("FAIR", "FAIR") Ownable(initialOwner) {
         MAX_SUPPLY = _maxSupply;
         MINT_PRICE_PUBLIC = _mintPricePublic;
         MINT_PRICE_ALLOWLIST = _mintPriceAllowlist;
         MAX_PER_WALLET_ALLOWLIST = _maxPerWalletAllowlist;
         MAX_PER_WALLET_PUBLIC = _maxPerWalletPublic;
+        unrevealedURI = _unrevealedURI;
+        PROVENANCE_HASH = _provenanceHash;
     }
 
     function mint(uint256 quantity) external payable {
@@ -125,5 +139,21 @@ contract FairMintNFT is ERC721, Ownable2Step {
         (bool success,) = owner().call{value: balance}("");
         require(success, RecipientNotAccept());
         emit Withdrawn(owner(), balance);
+    }
+
+    function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+        _requireOwned(tokenId);
+        if (!revealed) {
+            return unrevealedURI;
+        }
+        return string.concat(baseURI, tokenId.toString());
+    }
+
+    function reveal(string calldata newBaseURI) external onlyOwner {
+        require(!revealed, AlreadyRevealed());
+        require(mintStage == MintStage.Ended, RevealNotEndedStage(mintStage));
+        baseURI = newBaseURI;
+        revealed = true;
+        emit Revealed(newBaseURI);
     }
 }

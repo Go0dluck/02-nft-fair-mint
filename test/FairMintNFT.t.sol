@@ -7,6 +7,7 @@ import {FairMintNFT} from "../src/FairMintNFT.sol";
 import {RejectingReceiver} from "./mocks/RejectingReceiver.sol";
 import {MaliciousReceiver} from "./mocks/MaliciousReceiver.sol";
 import {console} from "forge-std/console.sol";
+import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 contract FairMintNFTTest is Test {
     FairMintNFT fairMintNFT;
@@ -24,6 +25,9 @@ contract FairMintNFTTest is Test {
     uint256 constant MAX_PER_WALLET_ALLOWLIST = 2;
     bytes32 newRoot;
     string json;
+    string constant UNREVEALED_URI = "unrevealedURI";
+    bytes32 constant PROVENANCE_HASH = keccak256("provenanceHash");
+    string constant BASE_URI = "ipfs://.../";
 
     function setUp() external {
         dev = makeAddr("dev");
@@ -37,8 +41,16 @@ contract FairMintNFTTest is Test {
         vm.deal(alice, 10 ether);
         vm.deal(bob, 10 ether);
         vm.deal(user2, 10 ether);
-        fairMintNFT =
-            new FairMintNFT(dev, 10, PRICE_PUBLIC, PRICE_ALLOWLIST, MAX_PER_WALLET_ALLOWLIST, MAX_PER_WALLET_PUBLIC);
+        fairMintNFT = new FairMintNFT(
+            dev,
+            10,
+            PRICE_PUBLIC,
+            PRICE_ALLOWLIST,
+            MAX_PER_WALLET_ALLOWLIST,
+            MAX_PER_WALLET_PUBLIC,
+            UNREVEALED_URI,
+            PROVENANCE_HASH
+        );
         json = vm.readFile("merkle/output.json");
         newRoot = vm.parseJsonBytes32(json, ".root");
     }
@@ -291,7 +303,9 @@ contract FairMintNFTTest is Test {
     function test_WithdrawRevertRecipientNotAccept() public {
         vm.deal(user1, PRICE_PUBLIC * 3);
         RejectingReceiver mock = new RejectingReceiver();
-        FairMintNFT fair = new FairMintNFT(address(mock), 10, PRICE_PUBLIC, PRICE_ALLOWLIST, 3, MAX_PER_WALLET_PUBLIC);
+        FairMintNFT fair = new FairMintNFT(
+            address(mock), 10, PRICE_PUBLIC, PRICE_ALLOWLIST, 3, MAX_PER_WALLET_PUBLIC, UNREVEALED_URI, PROVENANCE_HASH
+        );
         vm.startPrank(address(mock));
         fair.setMerkleRoot(newRoot);
         fair.changeMintStage(FairMintNFT.MintStage.Allowlist);
@@ -512,6 +526,67 @@ contract FairMintNFTTest is Test {
         fairMintNFT.mint(type(uint256).max);
     }
 
+    function test_TokenURI_BeforeReveal() public {
+        _openPublic();
+        _mintAs(alice, 2);
+        assertEq(fairMintNFT.tokenURI(1), UNREVEALED_URI);
+        assertEq(fairMintNFT.tokenURI(2), UNREVEALED_URI);
+    }
+
+    function test_TokenURI_AfterReveal() public {
+        _openPublic();
+        _mintAs(alice, 2);
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        fairMintNFT.reveal(BASE_URI);
+        assertEq(fairMintNFT.tokenURI(1), "ipfs://.../1");
+        vm.stopPrank();
+    }
+
+    function test_Reveal_EmitsEvent() public {
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        vm.expectEmit(false, false, false, true);
+        emit FairMintNFT.Revealed(BASE_URI);
+        fairMintNFT.reveal(BASE_URI);
+        vm.stopPrank();
+    }
+
+    function test_RevertWhen_RevealTwice() public {
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        fairMintNFT.reveal(BASE_URI);
+        vm.expectRevert(FairMintNFT.AlreadyRevealed.selector);
+        fairMintNFT.reveal("ipfs2://.../");
+        assertEq(fairMintNFT.baseURI(), BASE_URI);
+        vm.stopPrank();
+    }
+
+    function test_RevertWhen_RevealBeforeEnded() public {
+        _openPublic();
+        vm.prank(dev);
+        vm.expectRevert(abi.encodeWithSelector(FairMintNFT.RevealNotEndedStage.selector, FairMintNFT.MintStage.Public));
+        fairMintNFT.reveal(BASE_URI);
+    }
+
+    function test_RevertWhen_NotOwnerReveals() public {
+        vm.prank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        fairMintNFT.reveal(BASE_URI);
+    }
+
+    function test_RevertWhen_TokenURINonexistent() public {
+        _openPublic();
+        _mintAs(alice, 2);
+        vm.startPrank(dev);
+        fairMintNFT.changeMintStage(FairMintNFT.MintStage.Ended);
+        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 999));
+        fairMintNFT.tokenURI(999);
+        vm.stopPrank();
+    }
+
     function _openAllowlist() internal {
         fairMintNFT.setMerkleRoot(newRoot);
         fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);
@@ -530,7 +605,7 @@ contract FairMintNFTTest is Test {
         fairMintNFT.mint{value: PRICE_PUBLIC * quantity}(quantity);
     }
 
-    function _proofOf(address user) internal returns (bytes32[] memory) {
+    function _proofOf(address user) internal view returns (bytes32[] memory) {
         return vm.parseJsonBytes32Array(json, string.concat(".proofs.", vm.toString(user)));
     }
 }
