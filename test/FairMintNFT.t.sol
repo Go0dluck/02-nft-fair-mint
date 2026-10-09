@@ -497,6 +497,21 @@ contract FairMintNFTTest is Test {
         assertEq(fairMintNFT.publicMinted(alice), 3);
     }
 
+    function test_RevertWhen_HugeQuantityOnEmptyContract() public {
+        _openPublic();
+        vm.prank(alice);
+        vm.expectRevert(FairMintNFT.MaxSupplyExceeded.selector);
+        fairMintNFT.mint(type(uint256).max);
+    }
+
+    function test_RevertWhen_HugeQuantityAfterFirstMint() public {
+        _openPublic();
+        _mintAs(alice, 1);
+        vm.prank(bob);
+        vm.expectRevert(FairMintNFT.MaxSupplyExceeded.selector);
+        fairMintNFT.mint(type(uint256).max);
+    }
+
     function _openAllowlist() internal {
         fairMintNFT.setMerkleRoot(newRoot);
         fairMintNFT.changeMintStage(FairMintNFT.MintStage.Allowlist);

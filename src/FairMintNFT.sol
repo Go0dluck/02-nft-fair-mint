@@ -81,12 +81,12 @@ contract FairMintNFT is ERC721, Ownable2Step {
         uint256 maxPerWallet
     ) private {
         require(quantity > 0, QuantityZero());
-        require(totalSupply() + quantity <= MAX_SUPPLY, MaxSupplyExceeded());
+        require(quantity <= MAX_SUPPLY - totalSupply(), MaxSupplyExceeded());
         uint256 totalMintPrice = quantity * mintPrice;
         require(msg.value == totalMintPrice, ValueNotEqualTotalMintPrice(msg.value, totalMintPrice));
         uint256 currentQuantity = counter[msg.sender];
         require(
-            counter[msg.sender] + quantity <= maxPerWallet, WalletLimitExceeded(quantity, currentQuantity, maxPerWallet)
+            currentQuantity + quantity <= maxPerWallet, WalletLimitExceeded(quantity, currentQuantity, maxPerWallet)
         );
         uint256 tempTokenId = nextTokenId;
         nextTokenId += quantity;
