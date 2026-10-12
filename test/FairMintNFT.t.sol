@@ -8,6 +8,8 @@ import {RejectingReceiver} from "./mocks/RejectingReceiver.sol";
 import {MaliciousReceiver} from "./mocks/MaliciousReceiver.sol";
 import {console} from "forge-std/console.sol";
 import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
 
 contract FairMintNFTTest is Test {
     FairMintNFT fairMintNFT;
@@ -19,6 +21,7 @@ contract FairMintNFTTest is Test {
     address user3;
     address user4;
     address user5;
+    address artist;
     uint256 constant PRICE_PUBLIC = 0.01 ether;
     uint256 constant PRICE_ALLOWLIST = 0.005 ether;
     uint256 constant MAX_PER_WALLET_PUBLIC = 3;
@@ -28,6 +31,7 @@ contract FairMintNFTTest is Test {
     string constant UNREVEALED_URI = "unrevealedURI";
     bytes32 constant PROVENANCE_HASH = keccak256("provenanceHash");
     string constant BASE_URI = "ipfs://.../";
+    uint256 constant ROYALTY_BPS = 500;
 
     function setUp() external {
         dev = makeAddr("dev");
@@ -38,6 +42,7 @@ contract FairMintNFTTest is Test {
         user3 = makeAddr("user3");
         user4 = makeAddr("user4");
         user5 = makeAddr("user5");
+        artist = makeAddr("artist");
         vm.deal(alice, 10 ether);
         vm.deal(bob, 10 ether);
         vm.deal(user2, 10 ether);
@@ -49,7 +54,9 @@ contract FairMintNFTTest is Test {
             MAX_PER_WALLET_ALLOWLIST,
             MAX_PER_WALLET_PUBLIC,
             UNREVEALED_URI,
-            PROVENANCE_HASH
+            PROVENANCE_HASH,
+            artist,
+            500
         );
         json = vm.readFile("merkle/output.json");
         newRoot = vm.parseJsonBytes32(json, ".root");
@@ -304,7 +311,16 @@ contract FairMintNFTTest is Test {
         vm.deal(user1, PRICE_PUBLIC * 3);
         RejectingReceiver mock = new RejectingReceiver();
         FairMintNFT fair = new FairMintNFT(
-            address(mock), 10, PRICE_PUBLIC, PRICE_ALLOWLIST, 3, MAX_PER_WALLET_PUBLIC, UNREVEALED_URI, PROVENANCE_HASH
+            address(mock),
+            10,
+            PRICE_PUBLIC,
+            PRICE_ALLOWLIST,
+            3,
+            MAX_PER_WALLET_PUBLIC,
+            UNREVEALED_URI,
+            PROVENANCE_HASH,
+            artist,
+            500
         );
         vm.startPrank(address(mock));
         fair.setMerkleRoot(newRoot);
@@ -585,6 +601,24 @@ contract FairMintNFTTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721NonexistentToken.selector, 999));
         fairMintNFT.tokenURI(999);
         vm.stopPrank();
+    }
+
+    function test_RoyaltyInfo() public {
+        (address receiver, uint256 amount) = fairMintNFT.royaltyInfo(1, 1 ether);
+        assertEq(receiver, artist);
+        assertEq(amount, 1 ether * ROYALTY_BPS / 10_000);
+    }
+
+    function test_SupportsInterface_ERC2981() public view {
+        assertTrue(fairMintNFT.supportsInterface(type(IERC2981).interfaceId));
+    }
+
+    function test_SupportsInterface_ERC721() public view {
+        assertTrue(fairMintNFT.supportsInterface(type(IERC721).interfaceId));
+    }
+
+    function test_SupportsInterface_Unsupported() public view {
+        assertFalse(fairMintNFT.supportsInterface(0xffffffff));
     }
 
     function _openAllowlist() internal {

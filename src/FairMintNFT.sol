@@ -2,12 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC2981} from "@openzeppelin/contracts/token/common/ERC2981.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-contract FairMintNFT is ERC721, Ownable2Step {
+contract FairMintNFT is ERC721, ERC2981, Ownable2Step {
     using Strings for uint256;
 
     enum MintStage {
@@ -61,7 +62,9 @@ contract FairMintNFT is ERC721, Ownable2Step {
         uint256 _maxPerWalletAllowlist,
         uint256 _maxPerWalletPublic,
         string memory _unrevealedURI,
-        bytes32 _provenanceHash
+        bytes32 _provenanceHash,
+        address _royaltyAddress,
+        uint96 _royaltyBps
     ) ERC721("FAIR", "FAIR") Ownable(initialOwner) {
         MAX_SUPPLY = _maxSupply;
         MINT_PRICE_PUBLIC = _mintPricePublic;
@@ -70,6 +73,7 @@ contract FairMintNFT is ERC721, Ownable2Step {
         MAX_PER_WALLET_PUBLIC = _maxPerWalletPublic;
         unrevealedURI = _unrevealedURI;
         PROVENANCE_HASH = _provenanceHash;
+        _setDefaultRoyalty(_royaltyAddress, _royaltyBps);
     }
 
     function mint(uint256 quantity) external payable {
@@ -155,5 +159,9 @@ contract FairMintNFT is ERC721, Ownable2Step {
         baseURI = newBaseURI;
         revealed = true;
         emit Revealed(newBaseURI);
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC2981) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }
